@@ -4,33 +4,22 @@ from urllib.parse import unquote, urlparse
 
 from dotenv import load_dotenv
 
-# Load a local .env file for development. Hosted platforms should provide
-# environment variables through their deployment settings.
 BASE_DIR = Path(__file__).resolve().parent
-ENV_PATH = BASE_DIR / ".env"
-load_dotenv(dotenv_path=ENV_PATH)
+load_dotenv(dotenv_path=BASE_DIR / ".env")
 
 
 def _database_settings():
-    """
-    Prefer Railway's public connection URL when the app is hosted outside
-    Railway (for example, on Vercel). A Railway private MYSQL_URL/host is
-    only reachable by services on Railway's private network.
-    """
-    connection_url = os.getenv("MYSQL_PUBLIC_URL") or os.getenv("MYSQL_URL")
-
-    if connection_url:
-        parsed = urlparse(connection_url)
+    # Vercel is outside Railway's private network, so use the public TCP URL.
+    # MYSQL_URL is private to Railway and must not be used as a Vercel fallback.
+    public_url = os.getenv("MYSQL_PUBLIC_URL")
+    if public_url:
+        parsed = urlparse(public_url)
         if parsed.scheme not in ("mysql", "mysql+mysqlconnector") or not parsed.hostname:
-            raise ValueError(
-                "MYSQL_PUBLIC_URL/MYSQL_URL must be a valid mysql:// connection URL."
-            )
+            raise ValueError("MYSQL_PUBLIC_URL must be a valid mysql:// connection URL.")
 
         database_name = unquote(parsed.path.lstrip("/"))
         if not parsed.username or not database_name:
-            raise ValueError(
-                "The MySQL connection URL must include a username and database name."
-            )
+            raise ValueError("MYSQL_PUBLIC_URL must include a username and database name.")
 
         return {
             "DB_HOST": parsed.hostname,
@@ -40,8 +29,7 @@ def _database_settings():
             "DB_PORT": parsed.port or 3306,
         }
 
-    # Also support individual Railway variables when the app itself runs
-    # inside Railway, plus DB_* names used by local/manual deployments.
+    # Supports local development and apps deployed within Railway.
     return {
         "DB_HOST": os.getenv("DB_HOST") or os.getenv("MYSQLHOST") or "localhost",
         "DB_USER": os.getenv("DB_USER") or os.getenv("MYSQLUSER") or "root",
