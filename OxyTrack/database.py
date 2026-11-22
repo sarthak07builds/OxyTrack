@@ -71,7 +71,7 @@ def setup_database_schema(schema_file_path=None):
             statements = f.read().split(";")
             for statement in statements:
                 statement = statement.strip()
-                if statement and not statement.startswith("--"):
+                if statement:
                     cursor.execute(statement)
         conn.commit()
         logger.info("Database schema verified and loaded into %s.", Config.DB_NAME)
