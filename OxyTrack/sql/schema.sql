@@ -1,6 +1,5 @@
 -- OxyTrack Database Schema
-CREATE DATABASE IF NOT EXISTS oxytrack_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-USE oxytrack_db;
+-- Tables are created in Config.DB_NAME by database.py.
 
 -- 1. Cylinders Table
 CREATE TABLE IF NOT EXISTS cylinders (
