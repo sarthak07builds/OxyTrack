@@ -1,0 +1,344 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <div>
+    <h2 class="fw-bold mb-1">Cylinder Fleet Management</h2>
+    <p class="text-muted mb-0">Add, track telemetry, adjust flow rates, and manage assignments.</p>
+  </div>
+  <div>
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addCylinderModal">
+      <i class="bi bi-plus-lg me-1"></i> Register New Cylinder
+    </button>
+  </div>
+</div>
+
+<!-- Filters Bar -->
+<div class="card border-0 shadow-sm p-3 mb-4">
+  <div class="row g-3">
+    <div class="col-md-5">
+      <div class="input-group">
+        <span class="input-group-text bg-white"><i class="bi bi-search text-muted"></i></span>
+        <input type="text" id="searchInput" class="form-control" placeholder="Search by Cylinder Code, Location, Patient..." onkeyup="filterCylinders()">
+      </div>
+    </div>
+    <div class="col-md-4">
+      <select id="statusFilter" class="form-select" onchange="filterCylinders()">
+        <option value="">All Statuses</option>
+        <option value="Available">Available</option>
+        <option value="In Use">In Use</option>
+        <option value="Depleted">Depleted</option>
+        <option value="Maintenance">Maintenance</option>
+      </select>
+    </div>
+    <div class="col-md-3 text-end">
+      <button class="btn btn-outline-secondary w-100" onclick="loadCylinders()">
+        <i class="bi bi-arrow-clockwise"></i> Reload Inventory
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Cylinders Table -->
+<div class="card border-0 shadow-sm p-3">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle">
+      <thead class="table-light">
+        <tr>
+          <th>Code</th>
+          <th>Type / Cap</th>
+          <th>Location</th>
+          <th>Pressure Level</th>
+          <th>Gas Volume</th>
+          <th>Flow (L/min)</th>
+          <th>Duration Left</th>
+          <th>Status</th>
+          <th>Assigned Patient</th>
+          <th class="text-end">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="cylinders-table-body">
+        <tr><td colspan="10" class="text-center py-4">Fetching cylinders inventory...</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Add Cylinder Modal -->
+<div class="modal fade" id="addCylinderModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form id="addCylinderForm" onsubmit="submitNewCylinder(event)">
+        <div class="modal-header">
+          <h5 class="modal-title fw-bold">Register New Cylinder</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">Cylinder Code / RFID</label>
+            <input type="text" name="cylinder_code" class="form-control" placeholder="e.g. OXY-ICU-105" required>
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col-6">
+              <label class="form-label">Type</label>
+              <select name="cylinder_type" class="form-select" onchange="handleTypeChange(this)">
+                <option value="Type D" selected>Type D (46.7 L)</option>
+                <option value="Type E">Type E (4.7 L)</option>
+                <option value="Type B">Type B (10.2 L)</option>
+                <option value="Jumbo">Jumbo (50.0 L)</option>
+              </select>
+            </div>
+            <div class="col-6">
+              <label class="form-label">Water Cap (L)</label>
+              <input type="number" step="0.1" name="water_capacity_liters" id="modalWaterCapacity" class="form-control" value="46.7" required>
+            </div>
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col-6">
+              <label class="form-label">Max Pressure (Bar)</label>
+              <input type="number" step="1" name="max_pressure_bar" class="form-control" value="150" required>
+            </div>
+            <div class="col-6">
+              <label class="form-label">Current Pressure (Bar)</label>
+              <input type="number" step="0.5" name="current_pressure_bar" class="form-control" value="150" required>
+            </div>
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col-6">
+              <label class="form-label">Flow Rate (L/min)</label>
+              <input type="number" step="0.1" name="flow_rate_lpm" class="form-control" value="0.0">
+            </div>
+            <div class="col-6">
+              <label class="form-label">Temperature (°C)</label>
+              <input type="number" step="0.1" name="temperature_celsius" class="form-control" value="25.0">
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Location / Ward</label>
+            <input type="text" name="location" class="form-control" placeholder="e.g. ICU Ward 2, Central Depot" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Assigned Patient (Optional)</label>
+            <input type="text" name="assigned_patient" class="form-control" placeholder="e.g. Alice Smith (Room 102)">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Cylinder</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Edit / Telemetry Update Modal -->
+<div class="modal fade" id="updateTelemetryModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form id="updateTelemetryForm" onsubmit="submitTelemetryUpdate(event)">
+        <input type="hidden" id="editCylinderId">
+        <div class="modal-header">
+          <h5 class="modal-title fw-bold" id="editModalTitle">Update Telemetry</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">Pressure (Bar)</label>
+            <input type="number" step="0.5" id="editPressure" class="form-control" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Flow Rate (L/min)</label>
+            <input type="number" step="0.1" id="editFlowRate" class="form-control" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Status</label>
+            <select id="editStatus" class="form-select">
+              <option value="Available">Available</option>
+              <option value="In Use">In Use</option>
+              <option value="Depleted">Depleted</option>
+              <option value="Maintenance">Maintenance</option>
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Location</label>
+            <input type="text" id="editLocation" class="form-control" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Assigned Patient</label>
+            <input type="text" id="editPatient" class="form-control">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Changes</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let allCylinders = [];
+
+async function loadCylinders() {
+  try {
+    const res = await fetch('/api/cylinders');
+    const result = await res.json();
+    if (result.status === 'success') {
+      allCylinders = result.data;
+      renderCylinders(allCylinders);
+    }
+  } catch (err) {
+    console.error("Error fetching cylinders:", err);
+  }
+}
+
+function renderCylinders(cylinders) {
+  const tbody = document.getElementById('cylinders-table-body');
+  if (!cylinders.length) {
+    tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted py-4">No matching cylinders found.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = cylinders.map(c => {
+    let badgeClass = 'badge-available';
+    if (c.status === 'In Use') badgeClass = 'badge-in-use';
+    else if (c.status === 'Depleted') badgeClass = 'badge-depleted';
+    else if (c.status === 'Maintenance') badgeClass = 'badge-maintenance';
+
+    return `
+      <tr>
+        <td class="fw-bold">${c.cylinder_code}</td>
+        <td><span class="badge bg-secondary">${c.cylinder_type}</span> <small class="text-muted">(${c.water_capacity_liters}L)</small></td>
+        <td><i class="bi bi-geo-alt text-muted"></i> ${c.location}</td>
+        <td style="min-width: 140px;">
+          <div class="d-flex justify-content-between small fw-bold">
+            <span>${c.current_pressure_bar} Bar</span>
+            <span class="text-muted">${c.pressure_percentage}%</span>
+          </div>
+          <div class="progress cylinder-progress mt-1">
+            <div class="progress-bar ${c.pressure_percentage < 25 ? 'bg-danger' : (c.pressure_percentage < 50 ? 'bg-warning' : 'bg-success')}" 
+                 style="width: ${c.pressure_percentage}%"></div>
+          </div>
+        </td>
+        <td class="fw-semibold">${c.current_volume_liters.toLocaleString()} L</td>
+        <td>${c.flow_rate_lpm}</td>
+        <td><span class="badge bg-light text-primary border">${c.remaining_duration_formatted}</span></td>
+        <td><span class="badge ${badgeClass}">${c.status}</span></td>
+        <td>${c.assigned_patient || '<span class="text-muted small">None</span>'}</td>
+        <td class="text-end">
+          <button class="btn btn-sm btn-outline-primary me-1" onclick="openEditModal(${JSON.stringify(c).replace(/"/g, '&quot;')})">
+            <i class="bi bi-pencil"></i>
+          </button>
+          <button class="btn btn-sm btn-outline-danger" onclick="deleteCylinder(${c.id})">
+            <i class="bi bi-trash"></i>
+          </button>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function filterCylinders() {
+  const query = document.getElementById('searchInput').value.toLowerCase();
+  const status = document.getElementById('statusFilter').value;
+
+  const filtered = allCylinders.filter(c => {
+    const matchesSearch = c.cylinder_code.toLowerCase().includes(query) ||
+                          c.location.toLowerCase().includes(query) ||
+                          (c.assigned_patient && c.assigned_patient.toLowerCase().includes(query));
+    const matchesStatus = status === '' || c.status === status;
+    return matchesSearch && matchesStatus;
+  });
+  renderCylinders(filtered);
+}
+
+function handleTypeChange(sel) {
+  const cap = document.getElementById('modalWaterCapacity');
+  if (sel.value === 'Type D') cap.value = 46.7;
+  else if (sel.value === 'Type E') cap.value = 4.7;
+  else if (sel.value === 'Type B') cap.value = 10.2;
+  else if (sel.value === 'Jumbo') cap.value = 50.0;
+}
+
+async function submitNewCylinder(e) {
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const data = Object.fromEntries(fd.entries());
+  try {
+    const res = await fetch('/api/cylinders', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    const result = await res.json();
+    if (result.status === 'success') {
+      bootstrap.Modal.getInstance(document.getElementById('addCylinderModal')).hide();
+      e.target.reset();
+      loadCylinders();
+    } else {
+      alert("Error: " + result.message);
+    }
+  } catch (err) {
+    console.error("Submission failed:", err);
+  }
+}
+
+function openEditModal(c) {
+  document.getElementById('editCylinderId').value = c.id;
+  document.getElementById('editModalTitle').innerText = `Update Telemetry - ${c.cylinder_code}`;
+  document.getElementById('editPressure').value = c.current_pressure_bar;
+  document.getElementById('editFlowRate').value = c.flow_rate_lpm;
+  document.getElementById('editStatus').value = c.status;
+  document.getElementById('editLocation').value = c.location;
+  document.getElementById('editPatient').value = c.assigned_patient || '';
+  new bootstrap.Modal(document.getElementById('updateTelemetryModal')).show();
+}
+
+async function submitTelemetryUpdate(e) {
+  e.preventDefault();
+  const id = document.getElementById('editCylinderId').value;
+  const payload = {
+    current_pressure_bar: parseFloat(document.getElementById('editPressure').value),
+    flow_rate_lpm: parseFloat(document.getElementById('editFlowRate').value),
+    status: document.getElementById('editStatus').value,
+    location: document.getElementById('editLocation').value,
+    assigned_patient: document.getElementById('editPatient').value || null
+  };
+  try {
+    const res = await fetch(`/api/cylinders/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const result = await res.json();
+    if (result.status === 'success') {
+      bootstrap.Modal.getInstance(document.getElementById('updateTelemetryModal')).hide();
+      loadCylinders();
+    } else {
+      alert("Error: " + result.message);
+    }
+  } catch (err) {
+    console.error("Update failed:", err);
+  }
+}
+
+async function deleteCylinder(id) {
+  if (!confirm("Are you sure you want to remove this cylinder?")) return;
+  try {
+    const res = await fetch(`/api/cylinders/${id}`, { method: 'DELETE' });
+    const result = await res.json();
+    if (result.status === 'success') {
+      loadCylinders();
+    } else {
+      alert("Delete failed: " + result.message);
+    }
+  } catch (err) {
+    console.error("Delete request failed:", err);
+  }
+}
+
+document.addEventListener('DOMContentLoaded', loadCylinders);
+</script>
+{% endblock %}

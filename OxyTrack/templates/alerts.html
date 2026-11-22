@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <div>
+    <h2 class="fw-bold mb-1">Safety & Emergency Alerts Center</h2>
+    <p class="text-muted mb-0">Automated triggers on critical pressures, sudden drops, and low capacity.</p>
+  </div>
+  <div>
+    <button class="btn btn-outline-secondary" onclick="loadAlerts()">
+      <i class="bi bi-arrow-clockwise"></i> Refresh Alerts
+    </button>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm p-3">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle">
+      <thead class="table-light">
+        <tr>
+          <th>Severity</th>
+          <th>Cylinder</th>
+          <th>Location</th>
+          <th>Alert Type</th>
+          <th>Message</th>
+          <th>Triggered At</th>
+          <th>Status</th>
+          <th class="text-end">Action</th>
+        </tr>
+      </thead>
+      <tbody id="alerts-table-body">
+        <tr><td colspan="8" class="text-center py-4">Checking alerts status...</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadAlerts() {
+  try {
+    const res = await fetch('/api/alerts');
+    const result = await res.json();
+    if (result.status === 'success') {
+      renderAlerts(result.data);
+    }
+  } catch (err) {
+    console.error("Error loading alerts:", err);
+  }
+}
+
+function renderAlerts(alerts) {
+  const tbody = document.getElementById('alerts-table-body');
+  if (!alerts.length) {
+    tbody.innerHTML = '<tr><td colspan="8" class="text-center text-success py-4"><i class="bi bi-check-circle-fill me-2 fs-5"></i>No active alerts! All cylinders operating within safe pressure limits.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = alerts.map(a => {
+    let sevBadge = 'bg-warning text-dark';
+    if (a.severity === 'CRITICAL') sevBadge = 'bg-danger';
+    else if (a.severity === 'HIGH') sevBadge = 'bg-danger bg-opacity-75';
+    else if (a.severity === 'LOW') sevBadge = 'bg-info text-dark';
+
+    return `
+      <tr class="${!a.is_resolved ? 'table-warning bg-opacity-25' : ''}">
+        <td><span class="badge ${sevBadge}">${a.severity}</span></td>
+        <td class="fw-bold">${a.cylinder_code}</td>
+        <td>${a.location}</td>
+        <td><code>${a.alert_type}</code></td>
+        <td>${a.message}</td>
+        <td class="small text-muted">${a.created_at}</td>
+        <td>
+          ${a.is_resolved 
+            ? '<span class="badge bg-success"><i class="bi bi-check"></i> Resolved</span>' 
+            : '<span class="badge bg-danger">Active</span>'}
+        </td>
+        <td class="text-end">
+          ${!a.is_resolved ? `
+            <button class="btn btn-sm btn-outline-success" onclick="resolveAlert(${a.id})">
+              Mark Resolved
+            </button>
+          ` : '<span class="text-muted small">Closed</span>'}
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+async function resolveAlert(id) {
+  try {
+    const res = await fetch(`/api/alerts/${id}/resolve`, { method: 'POST' });
+    const result = await res.json();
+    if (result.status === 'success') {
+      loadAlerts();
+    }
+  } catch (err) {
+    console.error("Failed to resolve alert:", err);
+  }
+}
+
+document.addEventListener('DOMContentLoaded', loadAlerts);
+</script>
+{% endblock %}

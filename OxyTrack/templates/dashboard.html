@@ -1,0 +1,248 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <div>
+    <h2 class="fw-bold mb-1">Hospital Oxygen Monitoring Overview</h2>
+    <p class="text-muted mb-0">Real-time telemetry, capacity tracking, and duration projections.</p>
+  </div>
+  <div>
+    <button class="btn btn-outline-primary me-2" onclick="loadDashboardData()">
+      <i class="bi bi-arrow-clockwise"></i> Refresh
+    </button>
+    <a href="{{ url_for('cylinders_view') }}" class="btn btn-primary">
+      <i class="bi bi-plus-circle"></i> Manage Cylinders
+    </a>
+  </div>
+</div>
+
+<!-- KPI Cards -->
+<div class="row g-3 mb-4">
+  <div class="col-md-3">
+    <div class="stat-card p-3">
+      <div class="d-flex justify-content-between align-items-center">
+        <div>
+          <span class="text-muted small fw-semibold text-uppercase">Total Cylinders</span>
+          <h3 class="fw-bold my-1" id="stat-total">-</h3>
+          <span class="badge bg-light text-dark">Fleet count</span>
+        </div>
+        <div class="bg-primary bg-opacity-10 text-primary p-3 rounded-circle">
+          <i class="bi bi-layers-fill fs-3"></i>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-3">
+    <div class="stat-card p-3">
+      <div class="d-flex justify-content-between align-items-center">
+        <div>
+          <span class="text-muted small fw-semibold text-uppercase">In Active Use</span>
+          <h3 class="fw-bold my-1 text-primary" id="stat-in-use">-</h3>
+          <span class="badge bg-primary">Bedside supplying</span>
+        </div>
+        <div class="bg-info bg-opacity-10 text-info p-3 rounded-circle">
+          <i class="bi bi-activity fs-3"></i>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-3">
+    <div class="stat-card p-3">
+      <div class="d-flex justify-content-between align-items-center">
+        <div>
+          <span class="text-muted small fw-semibold text-uppercase">Stored Volume</span>
+          <h3 class="fw-bold my-1 text-success" id="stat-volume">-</h3>
+          <span class="badge bg-success">Liters STP</span>
+        </div>
+        <div class="bg-success bg-opacity-10 text-success p-3 rounded-circle">
+          <i class="bi bi-droplet-half fs-3"></i>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-3">
+    <div class="stat-card p-3">
+      <div class="d-flex justify-content-between align-items-center">
+        <div>
+          <span class="text-muted small fw-semibold text-uppercase">Critical / Depleted</span>
+          <h3 class="fw-bold my-1 text-danger" id="stat-depleted">-</h3>
+          <span class="badge bg-danger">Requires Action</span>
+        </div>
+        <div class="bg-danger bg-opacity-10 text-danger p-3 rounded-circle">
+          <i class="bi bi-exclamation-triangle-fill fs-3"></i>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Charts Row -->
+<div class="row g-4 mb-4">
+  <div class="col-md-6">
+    <div class="card border-0 shadow-sm p-3">
+      <h5 class="fw-bold mb-3">Status Breakdown</h5>
+      <div style="height: 280px; position: relative;">
+        <canvas id="statusChart"></canvas>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="card border-0 shadow-sm p-3">
+      <h5 class="fw-bold mb-3">Cylinder Pressure Distribution (Bar)</h5>
+      <div style="height: 280px; position: relative;">
+        <canvas id="pressureChart"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Real-time Cylinders Quick Monitor -->
+<div class="card border-0 shadow-sm p-3">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h5 class="fw-bold mb-0">Active Cylinder Ward Telemetry</h5>
+    <a href="{{ url_for('cylinders_view') }}" class="btn btn-sm btn-outline-secondary">View Complete Inventory</a>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-hover align-middle">
+      <thead class="table-light">
+        <tr>
+          <th>Code / Tag</th>
+          <th>Type</th>
+          <th>Location</th>
+          <th>Pressure</th>
+          <th>Flow Rate</th>
+          <th>Est. Duration</th>
+          <th>Status</th>
+          <th>Assigned Patient</th>
+        </tr>
+      </thead>
+      <tbody id="cylinders-preview-body">
+        <tr><td colspan="8" class="text-center py-4">Loading real-time telemetry...</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let statusChartInstance = null;
+let pressureChartInstance = null;
+
+async function loadDashboardData() {
+  try {
+    const [statsRes, chartsRes, cylindersRes] = await Promise.all([
+      fetch('/api/stats').then(r => r.json()),
+      fetch('/api/analytics/charts').then(r => r.json()),
+      fetch('/api/cylinders').then(r => r.json())
+    ]);
+
+    if (statsRes.status === 'success') {
+      const s = statsRes.data;
+      document.getElementById('stat-total').innerText = s.total_cylinders;
+      document.getElementById('stat-in-use').innerText = s.in_use;
+      document.getElementById('stat-volume').innerText = s.total_volume_stored_liters.toLocaleString() + ' L';
+      document.getElementById('stat-depleted').innerText = s.depleted;
+    }
+
+    if (chartsRes.status === 'success') {
+      renderCharts(chartsRes.data);
+    }
+
+    if (cylindersRes.status === 'success') {
+      renderTablePreview(cylindersRes.data);
+    }
+  } catch (err) {
+    console.error("Failed to load dashboard data:", err);
+  }
+}
+
+function renderCharts(data) {
+  // 1. Status Chart
+  const statusLabels = data.status_distribution.map(d => d.status);
+  const statusCounts = data.status_distribution.map(d => d.count);
+  const ctxStatus = document.getElementById('statusChart').getContext('2d');
+  
+  if (statusChartInstance) statusChartInstance.destroy();
+  statusChartInstance = new Chart(ctxStatus, {
+    type: 'doughnut',
+    data: {
+      labels: statusLabels,
+      datasets: [{
+        data: statusCounts,
+        backgroundColor: ['#10b981', '#3b82f6', '#ef4444', '#f59e0b', '#8b5cf6']
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { position: 'bottom' } }
+    }
+  });
+
+  // 2. Pressure Chart
+  const pDist = data.pressure_distribution || {};
+  const ctxPressure = document.getElementById('pressureChart').getContext('2d');
+  if (pressureChartInstance) pressureChartInstance.destroy();
+  pressureChartInstance = new Chart(ctxPressure, {
+    type: 'bar',
+    data: {
+      labels: ['< 30 Bar (Critical)', '30 - 75 Bar (Low)', '75 - 120 Bar (Medium)', '≥ 120 Bar (Full)'],
+      datasets: [{
+        label: 'Cylinders Count',
+        data: [
+          pDist.critical_low || 0,
+          pDist.low || 0,
+          pDist.moderate || 0,
+          pDist.optimal || 0
+        ],
+        backgroundColor: ['#ef4444', '#f59e0b', '#3b82f6', '#10b981']
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
+    }
+  });
+}
+
+function renderTablePreview(cylinders) {
+  const tbody = document.getElementById('cylinders-preview-body');
+  if (!cylinders.length) {
+    tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-3">No cylinders recorded yet.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = cylinders.slice(0, 6).map(c => {
+    let badgeClass = 'badge-available';
+    if (c.status === 'In Use') badgeClass = 'badge-in-use';
+    else if (c.status === 'Depleted') badgeClass = 'badge-depleted';
+    else if (c.status === 'Maintenance') badgeClass = 'badge-maintenance';
+
+    return `
+      <tr>
+        <td class="fw-bold">${c.cylinder_code}</td>
+        <td><span class="badge bg-secondary">${c.cylinder_type}</span></td>
+        <td><i class="bi bi-geo-alt text-muted me-1"></i>${c.location}</td>
+        <td>
+          <div class="fw-semibold">${c.current_pressure_bar} / ${c.max_pressure_bar} Bar</div>
+          <div class="progress cylinder-progress mt-1">
+            <div class="progress-bar ${c.pressure_percentage < 25 ? 'bg-danger' : (c.pressure_percentage < 50 ? 'bg-warning' : 'bg-success')}" 
+                 style="width: ${c.pressure_percentage}%"></div>
+          </div>
+        </td>
+        <td>${c.flow_rate_lpm} L/min</td>
+        <td><span class="fw-bold text-primary">${c.remaining_duration_formatted}</span></td>
+        <td><span class="badge ${badgeClass}">${c.status}</span></td>
+        <td>${c.assigned_patient ? `<span class="badge bg-light text-dark border"><i class="bi bi-person me-1"></i>${c.assigned_patient}</span>` : '<span class="text-muted">Unassigned</span>'}</td>
+      </tr>
+    `;
+  }).join('');
+}
+
+document.addEventListener('DOMContentLoaded', loadDashboardData);
+</script>
+{% endblock %}

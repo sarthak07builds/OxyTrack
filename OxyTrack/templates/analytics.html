@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="mb-4">
+  <h2 class="fw-bold mb-1">Medical Oxygen Analytics & Consumption Dynamics</h2>
+  <p class="text-muted mb-0">Storage volume distribution across wards, pressure trends, and ward-level capacities.</p>
+</div>
+
+<div class="row g-4 mb-4">
+  <div class="col-md-7">
+    <div class="card border-0 shadow-sm p-4">
+      <h5 class="fw-bold mb-3">Oxygen Volume Distribution by Ward / Location (Liters)</h5>
+      <div style="height: 350px;">
+        <canvas id="locationVolumeChart"></canvas>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-5">
+    <div class="card border-0 shadow-sm p-4">
+      <h5 class="fw-bold mb-3">Cylinder Types in Operation</h5>
+      <div style="height: 350px;">
+        <canvas id="typesChart"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm p-4">
+  <h5 class="fw-bold mb-3">Gas Physics Reference & Calculation Models</h5>
+  <div class="row g-3">
+    <div class="col-md-4">
+      <div class="p-3 bg-light rounded">
+        <h6 class="fw-bold text-primary">Boyle's Law Application</h6>
+        <p class="small text-muted mb-1">\( V_{1} \times P_{1} = V_{2} \times P_{2} \)</p>
+        <p class="small mb-0">Expanded gas volume calculated based on cylinder water capacity multiplied by internal pressure in bar.</p>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="p-3 bg-light rounded">
+        <h6 class="fw-bold text-success">Safety Residual Buffer</h6>
+        <p class="small text-muted mb-1">Residual Threshold: 10 - 15 Bar</p>
+        <p class="small mb-0">System excludes residual safe pressure from patient delivery calculations to prevent flow cessation.</p>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="p-3 bg-light rounded">
+        <h6 class="fw-bold text-info">Flow Consumption Formula</h6>
+        <p class="small text-muted mb-1">\( \text{Duration (min)} = \frac{V_{\text{usable}}}{Q_{\text{flow (L/min)}}} \)</p>
+        <p class="small mb-0">Dynamic real-time time-to-empty projection reflecting continuous bedside telemetry updates.</p>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadAnalytics() {
+  try {
+    const [chartDataRes, cylindersRes] = await Promise.all([
+      fetch('/api/analytics/charts').then(r => r.json()),
+      fetch('/api/cylinders').then(r => r.json())
+    ]);
+
+    if (chartDataRes.status === 'success') {
+      const locData = chartDataRes.data.location_distribution;
+      const ctxLoc = document.getElementById('locationVolumeChart').getContext('2d');
+      new Chart(ctxLoc, {
+        type: 'bar',
+        data: {
+          labels: locData.map(l => l.location),
+          datasets: [{
+            label: 'Total Available Liters',
+            data: locData.map(l => l.total_vol),
+            backgroundColor: '#0284c7',
+            borderRadius: 6
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: { y: { beginAtZero: true } }
+        }
+      });
+    }
+
+    if (cylindersRes.status === 'success') {
+      const typeCounts = {};
+      cylindersRes.data.forEach(c => {
+        typeCounts[c.cylinder_type] = (typeCounts[c.cylinder_type] || 0) + 1;
+      });
+
+      const ctxType = document.getElementById('typesChart').getContext('2d');
+      new Chart(ctxType, {
+        type: 'polarArea',
+        data: {
+          labels: Object.keys(typeCounts),
+          datasets: [{
+            data: Object.values(typeCounts),
+            backgroundColor: ['#38bdf8', '#818cf8', '#34d399', '#fbbf24', '#f472b6']
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false
+        }
+      });
+    }
+  } catch (err) {
+    console.error("Failed to load analytics:", err);
+  }
+}
+
+document.addEventListener('DOMContentLoaded', loadAnalytics);
+</script>
+{% endblock %}
